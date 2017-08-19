@@ -12,6 +12,26 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 import de.robv.android.xposed.XposedBridge;
 
 public class NfcModifier implements IXposedHookLoadPackage {
+
+
+    public static String byteArrayToHex(byte[] a) {
+        StringBuilder sb = new StringBuilder(a.length * 2);
+        for(byte b: a)
+            sb.append(String.format("0x%02x ", b));
+        return sb.toString();
+    }
+
+    public static boolean comparePartialByteArray(byte []b1, byte[] b2) {
+        int len = Math.min(b1.length, b2.length);
+        for (int i = 0 ; i < len ; i++) {
+            if(b1[i] != b2[i]) {
+                return false;
+            }
+        }
+        return true;
+
+    }
+
     public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
 
         XposedBridge.log("we are hooked to " + lpparam.packageName);
@@ -19,6 +39,32 @@ public class NfcModifier implements IXposedHookLoadPackage {
 
         if (!lpparam.packageName.equals("com.librelink.app") && !lpparam.packageName.equals("com.example.exposed.myapplication"))
             return;
+
+        findAndHookMethod("com.abbottdiabetescare.flashglucose.sensorabstractionservice.rf.DefaultNfcRfModule", lpparam.classLoader, "tranceiveWithRetries",
+                "com.abbottdiabetescare.flashglucose.sensorabstractionservice.rf.NfcOsFunctions.NfcOsHandle", byte[].class, new XC_MethodHook() {
+
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        XposedBridge.log("We are after tranceiveWithRetries " + param.args[0] + " result = " + param.getResult());
+
+                        byte[] result = (byte[]) param.getResult();
+                        byte[] input = (byte[]) param.args[1];
+                        XposedBridge.log("We are after tranceiveWithRetries input = " + byteArrayToHex(input) + " output =" + byteArrayToHex(result));
+                        if(result.length != 7) {
+                            return;
+                        }
+                        byte[] cmp = {0x00,(byte)0xdf, 0x00, 0x00, 0x08};
+                        if(!comparePartialByteArray(cmp, result)) {
+                            XposedBridge.log("We are after tranceiveWithRetries did not find the right string");
+                            return;
+                        }
+                        XposedBridge.log("We are after tranceiveWithRetries changing the string");
+                        result[4] = 1;
+
+                    }
+
+        });
+
 
         // android.content.pm.PackageManager is the abstract name
         findAndHookMethod("android.app.ApplicationPackageManager", lpparam.classLoader, "getInstallerPackageName", String.class, new XC_MethodHook() {
@@ -32,29 +78,10 @@ public class NfcModifier implements IXposedHookLoadPackage {
                 XposedBridge.log("We are after getInstallerPackageName " + param.args[0] + " result = " + param.getResult());
                 param.setResult("com.android.vending");
 
-/*
-                TextView tv = (TextView) param.thisObject;
-                String text = tv.getText().toString();
-                tv.setText(text + " :)");
-                tv.setTextColor(Color.RED);
-*/
             }
         });
 
-/*
-        if (!lpparam.packageName.equals("com.android.systemui"))
-            return;
 
-        findAndHookMethod("com.android.systemui.statusbar.policy.Clock", lpparam.classLoader, "updateClock", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                TextView tv = (TextView) param.thisObject;
-                String text = tv.getText().toString();
-                tv.setText(text + " :)");
-                tv.setTextColor(Color.RED);
-            }
-        });
-        */
     }
 
 }
