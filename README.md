@@ -1,8 +1,8 @@
-#LibreExposed
+# LibreExposed
 Instructions on how to set a system that will allow open source projects to use
 LibreLink algorithm.
 
-#Introduction
+# Introduction
 
 Many users of libre have been suffering from the missing of alerts. Many open
 source projects have solved this issue but have failed to repeat the official
@@ -13,7 +13,7 @@ abbott have found that their sensors are not supported.
 
 In this readme, I'll explain how to solve these two issues:
 
-#Solution overview
+# Solution overview
 Exposed
 (https://forum.xda-developers.com/xposed/xposed-installer-versions-changelog-t2714053)
 Is a general library that can be installed on every (rooted) android phone. It
@@ -29,7 +29,7 @@ will send it to the native lib to get the bg. This BG should than be sent to
 other applications.
 A phone that has this sw installed can calculate the BG of more than one person.
 
-#Installation
+# Installation
 Install xposed (for example from
 https://forum.xda-developers.com/showthread.php?t=3034811). Then install the apk
 created by this repository. 
