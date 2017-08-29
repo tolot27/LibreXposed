@@ -15,6 +15,7 @@ import static de.robv.android.xposed.SELinuxHelper.getContext;
 import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 import de.robv.android.xposed.XposedBridge;
 
@@ -24,6 +25,11 @@ class MyReceiver extends BroadcastReceiver {
     public void onReceive(Context arg0, Intent arg1) {
         XposedBridge.log("we are inside the broadcast reciever");
 
+        /*
+        Class<?> classstart = XposedHelpers.findClass("com.pack.x", lpparam.classLoader);
+        Context context = (Context) XposedHelpers.getObjectField(param.thisObject, "context");
+        Object class2Instance = XposedHelpers.newInstance(classstart, context);
+         */
     }
 
 }
@@ -112,7 +118,14 @@ public class NfcModifier implements IXposedHookLoadPackage {
 
                IntentFilter filter = new IntentFilter("com.example.Broadcast");
 
-               MyReceiver receiver = new MyReceiver();
+
+                Class<?> DataProcessingNativeDef = XposedHelpers.findClass("com.abbottdiabetescare.flashglucose.sensorabstractionservice.dataprocessing.DataProcessingNative", lpparam.classLoader);
+                XposedBridge.log("DataProcessingNativeDef =  " +DataProcessingNativeDef );
+                Object DataProcessingNativeInstance = XposedHelpers.newInstance(DataProcessingNativeDef, 1095774808);
+                XposedBridge.log("DataProcessingNativeInstance =  " +DataProcessingNativeInstance );
+
+
+                MyReceiver receiver = new MyReceiver();
                context.registerReceiver(receiver, filter);
 
                //?? intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);

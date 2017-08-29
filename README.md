@@ -15,7 +15,7 @@ In this readme, I'll explain how to solve these two issues:
 
 # Solution overview
 Exposed
-(https://forum.xda-developers.com/xposed/xposed-installer-versions-changelog-t2714053)
+(https://forum.xda-developers.com/xposed/xposed-installer-versions-changelog-t2714053, https://www.xda-developers.com/making-your-own-xposed-modules-is-easier-than-you-think/)
 Is a general library that can be installed on every (rooted) android phone. It
 allows one, to modify existing apks without that the built in protection of
 librelink will recognize it. As a result, it allows one to be able to call the
