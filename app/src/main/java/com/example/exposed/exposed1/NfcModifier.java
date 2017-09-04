@@ -19,17 +19,47 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 import de.robv.android.xposed.XposedBridge;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+
 class MyReceiver extends BroadcastReceiver {
+
+    ClassLoader classLoader_;
+    MyReceiver(ClassLoader classLoader) {
+        classLoader_ = classLoader;
+    }
+
+    Object createApplicationRegion() {
+        Class<?> ApplicationRegionDef = XposedHelpers.findClass("com.abbottdiabetescare.flashglucose.sensorabstractionservice.ApplicationRegion", classLoader_);
+        XposedBridge.log("ApplicationRegionDef =  " + ApplicationRegionDef );
+
+        Object ApplicationRegionInstance = XposedHelpers.newInstance(ApplicationRegionDef,"applicationRegion2", 2, 3);
+        XposedBridge.log("ApplicationRegionInstance =  " + ApplicationRegionInstance );
+
+        //Object intRes = XposedHelpers.callMethod(ApplicationRegionInstance, "toValue");
+        //XposedBridge.log("ApplicationRegionInstance toValue returned =  " + intRes );
+
+        Object intRes1 = XposedHelpers.callMethod(ApplicationRegionInstance, "fromValue", 0);
+        XposedBridge.log("ApplicationRegionInstance fromValue returned =  " + intRes1 );
+
+        return intRes1;
+    }
+
 
     @Override
     public void onReceive(Context arg0, Intent arg1) {
         XposedBridge.log("we are inside the broadcast reciever");
 
-        /*
-        Class<?> classstart = XposedHelpers.findClass("com.pack.x", lpparam.classLoader);
-        Context context = (Context) XposedHelpers.getObjectField(param.thisObject, "context");
-        Object class2Instance = XposedHelpers.newInstance(classstart, context);
-         */
+        // Create DataProcessingNative
+        Class<?> DataProcessingNativeDef = XposedHelpers.findClass("com.abbottdiabetescare.flashglucose.sensorabstractionservice.dataprocessing.DataProcessingNative", classLoader_);
+        XposedBridge.log("DataProcessingNativeDef =  " + DataProcessingNativeDef );
+        Object DataProcessingNativeInstance = XposedHelpers.newInstance(DataProcessingNativeDef, 1095774808);
+        XposedBridge.log("DataProcessingNativeInstance =  " + DataProcessingNativeInstance );
+        Object ApplicationRegionInstance = createApplicationRegion();
+
+        byte[] bDat = {0x00,(byte)0xdf, 0x00, 0x00, 0x01, 01, 02};
+        boolean ret = (boolean)XposedHelpers.callMethod(DataProcessingNativeInstance, "isPatchSupported", bDat, ApplicationRegionInstance);
+        XposedBridge.log("return from  isPatchSupported is " + ret);
     }
 
 }
@@ -125,8 +155,80 @@ public class NfcModifier implements IXposedHookLoadPackage {
                 XposedBridge.log("DataProcessingNativeInstance =  " +DataProcessingNativeInstance );
 
 
-                MyReceiver receiver = new MyReceiver();
-               context.registerReceiver(receiver, filter);
+                // Create CommonSensorModule
+                Class<?> CommonSensorModuleDef = XposedHelpers.findClass("com.librelink.app.core.modules.CommonSensorModule", lpparam.classLoader);
+                XposedBridge.log("CommonSensorModuleDef =  " + CommonSensorModuleDef );
+                Object CommonSensorModuleInstance = XposedHelpers.newInstance(CommonSensorModuleDef);
+                XposedBridge.log("CommonSensorModuleInstance =  " + CommonSensorModuleInstance );
+
+
+                Method[] allMethods = CommonSensorModuleDef.getDeclaredMethods();
+                for (Method m : allMethods) {
+
+                    XposedBridge.log("method name =  " + m.getName() );
+                }
+
+                Class<?> ApplicationRegionDef = XposedHelpers.findClass("com.abbottdiabetescare.flashglucose.sensorabstractionservice.ApplicationRegion", lpparam.classLoader);
+                XposedBridge.log("ApplicationRegionDef =  " + ApplicationRegionDef );
+
+
+
+//                Class<?> CommonSensorModule_ProvideApplicationRegionFactoryDef = XposedHelpers.findClass("com.librelink.app.core.modules.CommonSensorModule_ProvideApplicationRegionFactory", lpparam.classLoader);
+//                XposedBridge.log("CommonSensorModule_ProvideApplicationRegionFactoryDef =  " + CommonSensorModule_ProvideApplicationRegionFactoryDef );
+
+
+
+
+
+                allMethods = ApplicationRegionDef.getDeclaredMethods();
+                for (Method m : allMethods) {
+
+                    XposedBridge.log("method name =  " + m.getName() );
+                }
+                Constructor[] allConstructors = ApplicationRegionDef.getDeclaredConstructors();
+                for (Constructor ctor : allConstructors) {
+                    XposedBridge.log("ctor name1 =  " + ctor.getName());
+                    ctor.setAccessible(true);
+
+                    Class<?>[] pType  = ctor.getParameterTypes();
+                    for (int i = 0; i < pType.length; i++) {
+                        XposedBridge.log("constructor parameter =  " + pType[i] );
+                    }
+                    Object ApplicationRegionInstance = ctor.newInstance("applicationRegion2",1,2);
+                    XposedBridge.log("constructor ApplicationRegionInstance =  " + ApplicationRegionInstance );
+                }
+
+                Object ApplicationRegionInstance = XposedHelpers.newInstance(ApplicationRegionDef,"applicationRegion2", 2, 3);
+                XposedBridge.log("ApplicationRegionInstance =  " + ApplicationRegionInstance );
+
+                Object intRes = XposedHelpers.callMethod(ApplicationRegionInstance, "toValue");
+                XposedBridge.log("ApplicationRegionInstance toValue returned =  " + intRes );
+
+                Object intRes1 = XposedHelpers.callMethod(ApplicationRegionInstance, "fromValue", 1);
+                XposedBridge.log("ApplicationRegionInstance fromValue returned =  " + intRes1 );
+
+                // Does not exist
+                // Method m = XposedHelpers.findMethodBestMatch(CommonSensorModuleDef, "provideApplicationRegion");
+                // XposedBridge.log("method m =  " + m );
+
+
+                // create ApplicationRegion factory
+                //Class<?> applicationRegionFactoryDef = XposedHelpers.findClass("com.librelink.app.core.modules.CommonSensorModule_ProvideApplicationRegionFactory", lpparam.classLoader);
+                //XposedBridge.log("applicationRegionFactoryDef =  " + applicationRegionFactoryDef );
+                //Object applicationRegionFactory = XposedHelpers.callStaticMethod(applicationRegionFactoryDef, "create",CommonSensorModuleInstance );
+                //XposedBridge.log("applicationRegionFactory =  " + applicationRegionFactory );
+
+
+
+                //Object applicationRegionFactoryInstance =
+
+                // Get an ApplicationRegion
+                //Object ApplicationRegionInstance = XposedHelpers.callMethod(CommonSensorModuleInstance, "provideApplicationRegion");
+                //XposedBridge.log("ApplicationRegionInstance =  " + ApplicationRegionInstance );
+
+
+                MyReceiver receiver = new MyReceiver(lpparam.classLoader);
+                context.registerReceiver(receiver, filter);
 
                //?? intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
            }
