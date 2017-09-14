@@ -12,6 +12,7 @@ import android.content.BroadcastReceiver;
 import android.os.Bundle;
 
 import static de.robv.android.xposed.SELinuxHelper.getContext;
+import static de.robv.android.xposed.XposedHelpers.findAndHookConstructor;
 import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -20,7 +21,9 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 import de.robv.android.xposed.XposedBridge;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 
 class MyReceiver extends BroadcastReceiver {
 
@@ -57,7 +60,7 @@ class MyReceiver extends BroadcastReceiver {
         XposedBridge.log("DataProcessingNativeInstance =  " + DataProcessingNativeInstance );
         Object ApplicationRegionInstance = createApplicationRegion();
 
-        byte[] bDat = {0x00,(byte)0xdf, 0x00, 0x00, 0x01, 01, 02};
+        byte[] bDat = {(byte)0xdf, 0x00, 0x00, 0x01, 01, 02};
         boolean ret = (boolean)XposedHelpers.callMethod(DataProcessingNativeInstance, "isPatchSupported", bDat, ApplicationRegionInstance);
         XposedBridge.log("return from  isPatchSupported is " + ret);
     }
@@ -82,8 +85,39 @@ public class NfcModifier implements IXposedHookLoadPackage {
             }
         }
         return true;
-
     }
+
+    public static String objectToString (Object obj) {
+        StringBuilder result = new StringBuilder();
+        String newLine = System.getProperty("line.separator");
+
+        result.append( obj.getClass().getName() );
+        result.append( " Object {" );
+        result.append(newLine);
+
+        //determine fields declared in this class only (no fields of superclass)
+        Field[] fields = obj.getClass().getDeclaredFields();
+
+        //print field names paired with their values
+        for ( Field field : fields  ) {
+            result.append("  ");
+            try {
+                result.append( field.getName() );
+                result.append(": ");
+                //requires access to private field:
+                field.setAccessible(true);
+
+                result.append( field.get(obj) );
+            } catch ( IllegalAccessException ex ) {
+                System.out.println(ex);
+            }
+            result.append(newLine);
+        }
+        result.append("}");
+
+        return result.toString();
+    }
+
 
     public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
 
@@ -116,7 +150,7 @@ public class NfcModifier implements IXposedHookLoadPackage {
 
                     }
 
-        });
+                });
 
 
         // android.content.pm.PackageManager is the abstract name
@@ -134,6 +168,38 @@ public class NfcModifier implements IXposedHookLoadPackage {
             }
         });
 
+        findAndHookConstructor("com.abbottdiabetescare.flashglucose.sensorabstractionservice.dataprocessing.DataProcessingNative", lpparam.classLoader, int.class, new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                XposedBridge.log("We are before DataProcessingNative.DataProcessingNative " + param.args[0] );
+            }
+        });
+
+        findAndHookMethod("com.abbottdiabetescare.flashglucose.sensorabstractionservice.dataprocessing.DataProcessingNative", lpparam.classLoader,
+                "isPatchSupported", byte[].class, "com.abbottdiabetescare.flashglucose.sensorabstractionservice.ApplicationRegion", new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                XposedBridge.log("We are before DataProcessingNative.isPatchSupported " + param.args[0] + " " +  param.args[1] + " this = "+ param.thisObject);
+                XposedBridge.log("continuing bytes =  " + byteArrayToHex((byte[])param.args[0]) + "this = " + objectToString(param.thisObject));
+            }
+
+        });
+
+        findAndHookMethod("com.abbottdiabetescare.flashglucose.sensorabstractionservice.dataprocessing.DataProcessingNative", lpparam.classLoader, "processScan",
+                "com.abbottdiabetescare.flashglucose.sensorabstractionservice.AlarmConfiguration",
+                "com.abbottdiabetescare.flashglucose.sensorabstractionservice.NonActionableConfiguration",
+                byte[].class, int.class, int.class, int.class,
+                byte[].class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        XposedBridge.log("We are before DataProcessingNative.processScan AlarmConfiguration " + param.args[0] + " NonActionableConfiguration " + param.args[1] +
+                                " packet " + param.args[2] + " sensorStartTimestamp " + param.args[3] + " sensorScanTimestamp " + param.args[4] +
+                                " currentUtcOffset " + param.args[5] + " oldState " + param.args[6] +  "this = " + param.thisObject);
+                    }
+
+                });
+
+
 
         // Hook the SplashActivity.oncreate method, to register a broadcast receiver.
         findAndHookMethod("com.librelink.app.ui.SplashActivity", lpparam.classLoader, "onCreate", Bundle.class, new XC_MethodHook() {
@@ -144,9 +210,16 @@ public class NfcModifier implements IXposedHookLoadPackage {
 
                 // Register a broadcast reciever
                 Context context = (Context) AndroidAppHelper.currentApplication();
-               XposedBridge.log("context = " + context);
+                XposedBridge.log("context = " + context);
 
-               IntentFilter filter = new IntentFilter("com.example.Broadcast");
+                IntentFilter filter = new IntentFilter("com.example.Broadcast");
+                MyReceiver receiver = new MyReceiver(lpparam.classLoader);
+                context.registerReceiver(receiver, filter);
+
+                //?? intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
+
+                // Code under is probably not needed.
+                if (true) return;
 
 
                 Class<?> DataProcessingNativeDef = XposedHelpers.findClass("com.abbottdiabetescare.flashglucose.sensorabstractionservice.dataprocessing.DataProcessingNative", lpparam.classLoader);
@@ -170,13 +243,6 @@ public class NfcModifier implements IXposedHookLoadPackage {
 
                 Class<?> ApplicationRegionDef = XposedHelpers.findClass("com.abbottdiabetescare.flashglucose.sensorabstractionservice.ApplicationRegion", lpparam.classLoader);
                 XposedBridge.log("ApplicationRegionDef =  " + ApplicationRegionDef );
-
-
-
-//                Class<?> CommonSensorModule_ProvideApplicationRegionFactoryDef = XposedHelpers.findClass("com.librelink.app.core.modules.CommonSensorModule_ProvideApplicationRegionFactory", lpparam.classLoader);
-//                XposedBridge.log("CommonSensorModule_ProvideApplicationRegionFactoryDef =  " + CommonSensorModule_ProvideApplicationRegionFactoryDef );
-
-
 
 
 
@@ -227,12 +293,11 @@ public class NfcModifier implements IXposedHookLoadPackage {
                 //XposedBridge.log("ApplicationRegionInstance =  " + ApplicationRegionInstance );
 
 
-                MyReceiver receiver = new MyReceiver(lpparam.classLoader);
-                context.registerReceiver(receiver, filter);
 
-               //?? intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
-           }
-       });
+
+
+            }
+        });
 
     }
 
