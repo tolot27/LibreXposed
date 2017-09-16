@@ -20,13 +20,18 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 import de.robv.android.xposed.XposedBridge;
 
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
-class Printer { 
+class Utils {
     // Use reflection print the value of an object
     public static String objectToString (Object obj) {
         StringBuilder result = new StringBuilder();
@@ -58,6 +63,70 @@ class Printer {
 
         return result.toString();
     }
+
+
+    public static String byteArrayToHex(byte[] a) {
+        if(a == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder(a.length * 2);
+        for(byte b: a)
+            sb.append(String.format("0x%02x ", b));
+        return sb.toString();
+    }
+
+    public static boolean comparePartialByteArray(byte []b1, byte[] b2) {
+        int len = Math.min(b1.length, b2.length);
+        for (int i = 0 ; i < len ; i++) {
+            if(b1[i] != b2[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static byte [] stringToByte(String str) {
+        // This function receives a string in the form "0x1, 0x5" and creates a byte array from it.
+        String []str_array = str.split(",");
+        byte[] numbers = new byte[str_array.length];
+        for(int i = 0;i < str_array.length;i++)
+        {
+            // Note that this is assuming valid input
+            // If you want to check then add a try/catch
+            // and another index for the numbers if to continue adding the others (see below)
+            try {
+                numbers[i] = Byte.decode(str_array[i].trim());
+            } catch (NumberFormatException nfe){
+                XposedBridge.log("Invalid value for a byte in " + str);
+                XposedBridge.log("Invalid value index is " + i + " value is " + str_array[i].trim());
+                return null;
+            }
+        }
+        return numbers;
+    }
+
+    public static byte[] readBinaryFile(String fullPath) {
+        if(fullPath == null) {
+            return null;
+        }
+        File file = new File(fullPath);
+        byte[] fileData = new byte[(int) file.length()];
+        DataInputStream dis = null;
+        try {
+            dis = new DataInputStream(new FileInputStream(file));
+        } catch (FileNotFoundException e) {
+            XposedBridge.log("File not found " + fullPath);
+            return null;
+        }
+        try {
+            dis.readFully(fileData);
+            dis.close();
+        } catch (IOException e) {
+            XposedBridge.log("Error reading from file " + fullPath);
+            return null;
+        }
+        return fileData;
+    }
 }
 
 class MyReceiver extends BroadcastReceiver {
@@ -83,9 +152,25 @@ class MyReceiver extends BroadcastReceiver {
         return intRes1;
     }
 
+
     @Override
-    public void onReceive(Context arg0, Intent arg1) {
+    public void onReceive(Context arg0, Intent intent) {
         XposedBridge.log("we are inside the broadcast reciever");
+
+        String packet_file = intent.getStringExtra("packet");
+        String old_state_file = intent.getStringExtra("old_state");
+
+        XposedBridge.log("packet = " + packet_file);
+        XposedBridge.log("old_state = " + old_state_file);
+        byte[] packet = Utils.readBinaryFile(packet_file);
+        XposedBridge.log("byte packet = " + Utils.byteArrayToHex(packet));
+
+        byte[] oldState = Utils.readBinaryFile(old_state_file);
+        XposedBridge.log("byte oldState = " + Utils.byteArrayToHex(oldState));
+
+        if(packet == null || oldState == null) {
+            return;
+        }
 
         // Create DataProcessingNative
         Class<?> DataProcessingNativeDef = XposedHelpers.findClass("com.abbottdiabetescare.flashglucose.sensorabstractionservice.dataprocessing.DataProcessingNative", classLoader_);
@@ -110,6 +195,8 @@ class MyReceiver extends BroadcastReceiver {
         Object NonActionableConfigurationInstance = XposedHelpers.newInstance(NonActionableConfigurationDef, true, true, 0, 40, 500, -2, 2);
         XposedBridge.log("NonActionableConfigurationInstance =  " + NonActionableConfigurationInstance );
 
+
+        /*
         byte[] packet = {(byte)0x3a, (byte)0xcf, (byte)0x10, (byte)0x16, (byte)0x03, (byte)0x00, (byte)0x00, (byte)0x00,
                 (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00,
                 (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00,
@@ -153,17 +240,22 @@ class MyReceiver extends BroadcastReceiver {
                 (byte)0x72, (byte)0xc2, (byte)0x00, (byte)0x08, (byte)0x82, (byte)0x05, (byte)0x09, (byte)0x51,
                 (byte)0x14, (byte)0x07, (byte)0x96, (byte)0x80, (byte)0x5a, (byte)0x00, (byte)0xed, (byte)0xa6,
                 (byte)0x0e, (byte)0x6e, (byte)0x1a, (byte)0xc8, (byte)0x04, (byte)0xdd, (byte)0x58, (byte)0x6d};
+
+        */
+
         int sensorStartTimestamp = 0x0e181349;
         int sensorScanTimestamp = 0x0e1c4794;
         int currentUtcOffset = 0x0036ee80;
+        /*
         byte[] oldState = {(byte)0xd5, (byte)0x11, (byte)0x00, (byte)0x00, (byte)0xb8, (byte)0x25, (byte)0xb5, (byte)0x94,
                 (byte)0x94, (byte)0x56, (byte)0xcc, (byte)0x36, (byte)0x25, (byte)0xec, (byte)0x4b, (byte)0x40,
                 (byte)0xd5, (byte)0x11, (byte)0x00, (byte)0x00, (byte)0x38, (byte)0xee, (byte)0xe9, (byte)0xae,
                 (byte)0x6b, (byte)0x09, (byte)0x20, (byte)0x2b, (byte)0xfe, (byte)0x44, (byte)0xdc, (byte)0xbf};
+        */
 
         Object DataProcessingOutputsInstance =  XposedHelpers.callMethod(DataProcessingNativeInstance, "processScan", AlarmConfigurationInstance, NonActionableConfigurationInstance,
                 packet, sensorStartTimestamp, sensorScanTimestamp, currentUtcOffset, oldState);
-        XposedBridge.log("return from  processScan is " + DataProcessingOutputsInstance + " " + Printer.objectToString(DataProcessingOutputsInstance));
+        XposedBridge.log("return from  processScan is " + DataProcessingOutputsInstance + " " + Utils.objectToString(DataProcessingOutputsInstance));
 
         java.lang.reflect.Method method = null;
         Object AlgorithmResultsInstance = null;
@@ -182,7 +274,7 @@ class MyReceiver extends BroadcastReceiver {
         } catch (InvocationTargetException e) {
             XposedBridge.log("InvocationTargetException: Exception cought in getRealTimeGlucose" + e);
         }
-        XposedBridge.log("return from  getAlgorithmResults is AlgorithmResultsInstance = " + AlgorithmResultsInstance + " " + Printer.objectToString(AlgorithmResultsInstance));
+        XposedBridge.log("return from  getAlgorithmResults is AlgorithmResultsInstance = " + AlgorithmResultsInstance + " " + Utils.objectToString(AlgorithmResultsInstance));
 
 
 
@@ -198,7 +290,7 @@ class MyReceiver extends BroadcastReceiver {
         } catch (InvocationTargetException e) {
             XposedBridge.log("InvocationTargetException: Exception cought in getRealTimeGlucose" + e);
         }
-        XposedBridge.log("return from  processScan is getRealTimeGlucose GlucoseValueInstance = " + GlucoseValueInstance + " " + Printer.objectToString(GlucoseValueInstance));
+        XposedBridge.log("return from  processScan is getRealTimeGlucose GlucoseValueInstance = " + GlucoseValueInstance + " " + Utils.objectToString(GlucoseValueInstance));
 
     }
 
@@ -207,22 +299,6 @@ class MyReceiver extends BroadcastReceiver {
 public class NfcModifier implements IXposedHookLoadPackage {
 
 
-    public static String byteArrayToHex(byte[] a) {
-        StringBuilder sb = new StringBuilder(a.length * 2);
-        for(byte b: a)
-            sb.append(String.format("0x%02x ", b));
-        return sb.toString();
-    }
-
-    public static boolean comparePartialByteArray(byte []b1, byte[] b2) {
-        int len = Math.min(b1.length, b2.length);
-        for (int i = 0 ; i < len ; i++) {
-            if(b1[i] != b2[i]) {
-                return false;
-            }
-        }
-        return true;
-    }
 
 
 
@@ -244,12 +320,12 @@ public class NfcModifier implements IXposedHookLoadPackage {
 
                         byte[] result = (byte[]) param.getResult();
                         byte[] input = (byte[]) param.args[1];
-                        XposedBridge.log("We are after tranceiveWithRetries input = " + byteArrayToHex(input) + " output =" + byteArrayToHex(result));
+                        XposedBridge.log("We are after tranceiveWithRetries input = " + Utils.byteArrayToHex(input) + " output =" + Utils.byteArrayToHex(result));
                         if(result.length != 7) {
                             return;
                         }
                         byte[] cmp = {0x00,(byte)0xdf, 0x00, 0x00, 0x08};
-                        if(!comparePartialByteArray(cmp, result)) {
+                        if(!Utils.comparePartialByteArray(cmp, result)) {
                             XposedBridge.log("We are after tranceiveWithRetries did not find the right string");
                             return;
                         }
@@ -288,7 +364,7 @@ public class NfcModifier implements IXposedHookLoadPackage {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 XposedBridge.log("We are before DataProcessingNative.isPatchSupported " + param.args[0] + " " +  param.args[1] + " this = "+ param.thisObject);
-                XposedBridge.log("continuing bytes =  " + byteArrayToHex((byte[])param.args[0]) + "this = " + Printer.objectToString(param.thisObject));
+                XposedBridge.log("continuing bytes =  " + Utils.byteArrayToHex((byte[])param.args[0]) + "this = " + Utils.objectToString(param.thisObject));
             }
 
         });
@@ -303,8 +379,8 @@ public class NfcModifier implements IXposedHookLoadPackage {
                         XposedBridge.log("We are before DataProcessingNative.processScan AlarmConfiguration " + param.args[0] + " NonActionableConfiguration " + param.args[1] +
                                 " packet " + param.args[2] + " sensorStartTimestamp " + param.args[3] + " sensorScanTimestamp " + param.args[4] +
                                 " currentUtcOffset " + param.args[5] + " oldState " + param.args[6] +  "this = " + param.thisObject);
-                        XposedBridge.log("continuing before DataProcessingNative.processScan AlarmConfiguration " +  Printer.objectToString(param.args[0]) +
-                        " NonActionableConfiguration " + Printer.objectToString(param.args[1]));
+                        XposedBridge.log("continuing before DataProcessingNative.processScan AlarmConfiguration " +  Utils.objectToString(param.args[0]) +
+                        " NonActionableConfiguration " + Utils.objectToString(param.args[1]));
                     }
 
                 });
