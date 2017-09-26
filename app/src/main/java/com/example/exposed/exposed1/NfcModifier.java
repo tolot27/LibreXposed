@@ -24,12 +24,15 @@ import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 class Utils {
     // Use reflection print the value of an object
@@ -127,6 +130,29 @@ class Utils {
         }
         return fileData;
     }
+
+    public static void writeToFile(String file, byte []data) {
+
+        Context context = (Context) AndroidAppHelper.currentApplication();
+        XposedBridge.log("context = " + context);
+        String dir = context.getFilesDir().getPath();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss");
+        String currentDateandTime = sdf.format(new Date());
+
+        String file_name = dir + '/' + file+ "_" + currentDateandTime + ".dat";
+        try {
+            XposedBridge.log("Writing to file " + file_name + ", size = " + (data == null ? 0 : data.length));
+            FileOutputStream f = new FileOutputStream(new File(file_name));
+            if(data != null) {
+                // file will be written with zero length to let the user know what is happening.
+                f.write(data);
+            }
+            f.close();
+        }catch (IOException e) {
+            XposedBridge.log("Cought exception when trying to write file" + e);
+        }
+    }
+
 }
 
 class MyReceiver extends BroadcastReceiver {
@@ -321,6 +347,9 @@ public class NfcModifier implements IXposedHookLoadPackage {
                         byte[] result = (byte[]) param.getResult();
                         byte[] input = (byte[]) param.args[1];
                         XposedBridge.log("We are after tranceiveWithRetries input = " + Utils.byteArrayToHex(input) + " output =" + Utils.byteArrayToHex(result));
+                        if(result == null) {
+                            return;
+                        }
                         if(result.length != 7) {
                             return;
                         }
@@ -381,10 +410,13 @@ public class NfcModifier implements IXposedHookLoadPackage {
                                 " currentUtcOffset " + param.args[5] + " oldState " + param.args[6] +  "this = " + param.thisObject);
                         XposedBridge.log("continuing before DataProcessingNative.processScan AlarmConfiguration " +  Utils.objectToString(param.args[0]) +
                         " NonActionableConfiguration " + Utils.objectToString(param.args[1]));
+
+
+                        Utils.writeToFile("scan_mem" , (byte[])param.args[2]);
                     }
 
-                });
 
+                });
 
 
         // Hook the SplashActivity.oncreate method, to register a broadcast receiver.
