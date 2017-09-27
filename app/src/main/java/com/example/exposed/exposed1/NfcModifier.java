@@ -197,6 +197,7 @@ class MyReceiver extends BroadcastReceiver {
         if(packet == null || oldState == null) {
             return;
         }
+        //oldState = null;
 
         // Create DataProcessingNative
         Class<?> DataProcessingNativeDef = XposedHelpers.findClass("com.abbottdiabetescare.flashglucose.sensorabstractionservice.dataprocessing.DataProcessingNative", classLoader_);
@@ -271,6 +272,7 @@ class MyReceiver extends BroadcastReceiver {
 
         int sensorStartTimestamp = 0x0e181349;
         int sensorScanTimestamp = 0x0e1c4794;
+        //sensorScanTimestamp = sensorStartTimestamp+ 3600 * 2 + 24*3600;
         int currentUtcOffset = 0x0036ee80;
         /*
         byte[] oldState = {(byte)0xd5, (byte)0x11, (byte)0x00, (byte)0x00, (byte)0xb8, (byte)0x25, (byte)0xb5, (byte)0x94,
@@ -410,9 +412,31 @@ public class NfcModifier implements IXposedHookLoadPackage {
                                 " currentUtcOffset " + param.args[5] + " oldState " + param.args[6] +  "this = " + param.thisObject);
                         XposedBridge.log("continuing before DataProcessingNative.processScan AlarmConfiguration " +  Utils.objectToString(param.args[0]) +
                         " NonActionableConfiguration " + Utils.objectToString(param.args[1]));
-
-
                         Utils.writeToFile("scan_mem" , (byte[])param.args[2]);
+                    }
+
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        XposedBridge.log("We are after DataProcessingNative.processScan");
+                        Object DataProcessingOutputsInstance = param.getResult();
+                        byte[] newState = null;
+                        java.lang.reflect.Method method = null;
+
+                        try {
+                            method = DataProcessingOutputsInstance.getClass().getMethod("getNewState");
+                        } catch (NoSuchMethodException e) {
+                            XposedBridge.log("NoSuchMethodException: Exception cought in getNewState" + e);
+                        }
+                        try {
+                            newState = (byte [])method.invoke(DataProcessingOutputsInstance);
+                        } catch (IllegalAccessException e) {
+                            XposedBridge.log("IllegalAccessException: Exception cought in getNewState" + e);
+                        } catch (InvocationTargetException e) {
+                            XposedBridge.log("InvocationTargetException: Exception cought in getNewState" + e);
+                        }
+
+                        XposedBridge.log("We are after DataProcessingNative.processScan newStatis = " + Utils.byteArrayToHex(newState));
+                        Utils.writeToFile("new_state" , newState);
                     }
 
 
