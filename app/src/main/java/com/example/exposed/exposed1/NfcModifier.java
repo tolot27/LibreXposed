@@ -34,9 +34,16 @@ import java.lang.reflect.Modifier;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 class Utils {
     // Use reflection print the value of an object
     public static String objectToString (Object obj) {
+        if (obj == null) {
+            return "{null}";
+        }
         StringBuilder result = new StringBuilder();
         String newLine = System.getProperty("line.separator");
 
@@ -155,6 +162,13 @@ class Utils {
 
 }
 
+class Constants {
+    static public final String XDRIP_PLUS_LIBRE_DATA = "com.eveningoutpost.dexdrip.LIBRE_DATA";
+    static public final String LIBRE_DATA_BUFFER = "com.eveningoutpost.dexdrip.Extras.DATA_BUFFER";
+    static public final String LIBRE_DATA_TIMESTAMP = "com.eveningoutpost.dexdrip.Extras.TIMESTAMP";
+    static public final String XDRIP_PLUS_NS_EMULATOR = "com.eveningoutpost.dexdrip.NS_EMULATOR";
+}
+
 class MyReceiver extends BroadcastReceiver {
 
     ClassLoader classLoader_;
@@ -180,15 +194,23 @@ class MyReceiver extends BroadcastReceiver {
 
 
     @Override
-    public void onReceive(Context arg0, Intent intent) {
+    public void onReceive(Context context, Intent intent) {
         XposedBridge.log("we are inside the broadcast reciever");
 
         String packet_file = intent.getStringExtra("packet");
-        String old_state_file = intent.getStringExtra("old_state");
+        String old_state_file = intent.getStringExtra("old_state");//"/data/local/tmp/new_state_20171002_165943.dat";
+        long timestamp;
 
-        XposedBridge.log("packet = " + packet_file);
-        XposedBridge.log("old_state = " + old_state_file);
-        byte[] packet = Utils.readBinaryFile(packet_file);
+        XposedBridge.log("packet_file = " + packet_file);
+        XposedBridge.log("old_state_file = " + old_state_file);
+        byte[] packet;
+        if(packet_file != null) {
+            packet = Utils.readBinaryFile(packet_file);
+        } else {
+            packet = intent.getByteArrayExtra(Constants.LIBRE_DATA_BUFFER);
+        }
+        timestamp = intent.getLongExtra(Constants.LIBRE_DATA_TIMESTAMP, 0);
+
         XposedBridge.log("byte packet = " + Utils.byteArrayToHex(packet));
 
         byte[] oldState = Utils.readBinaryFile(old_state_file);
@@ -320,8 +342,48 @@ class MyReceiver extends BroadcastReceiver {
         }
         XposedBridge.log("return from  processScan is getRealTimeGlucose GlucoseValueInstance = " + GlucoseValueInstance + " " + Utils.objectToString(GlucoseValueInstance));
 
+        // Get SGV value:
+        int sgv = 38;
+        try {
+            method = GlucoseValueInstance.getClass().getMethod("getValue");
+        } catch (NoSuchMethodException e) {
+            XposedBridge.log("NoSuchMethodException: Exception cought in GlucoseValueInstance.getValue" + e);
+        }
+        try {
+            sgv = (int)method.invoke(GlucoseValueInstance);
+        } catch (IllegalAccessException e) {
+            XposedBridge.log("IllegalAccessException: Exception cought in getRealTimeGlucose" + e);
+        } catch (InvocationTargetException e) {
+            XposedBridge.log("InvocationTargetException: Exception cought in getRealTimeGlucose" + e);
+        }
+        XposedBridge.log("return from  processScan sgv = " + sgv);
+        BroadcastBack(context, sgv, timestamp);
+
+
     }
 
+    void BroadcastBack(Context context, int sgv, long timestamp) {
+        // Broadcast the data back to xDrip.
+        JSONObject jo = new JSONObject();
+        try {
+            jo.put("type", "sgv");
+            jo.put("sgv", sgv);
+            jo.put("date", timestamp);
+        }catch (JSONException e) {
+            XposedBridge.log("JSONException: Exception cought in jo.put " + e);
+        }
+
+        JSONArray ja = new JSONArray();
+        ja.put(jo);
+
+        Intent intent = new Intent(Constants.XDRIP_PLUS_NS_EMULATOR);
+        Bundle bundle = new Bundle();
+        bundle.putString("collection", "entries");
+        bundle.putString("data", ja.toString());
+        intent.putExtras(bundle);
+        intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
+        context.sendBroadcast(intent);
+    }
 }
 
 public class NfcModifier implements IXposedHookLoadPackage {
@@ -421,20 +483,22 @@ public class NfcModifier implements IXposedHookLoadPackage {
                         Object DataProcessingOutputsInstance = param.getResult();
                         byte[] newState = null;
                         java.lang.reflect.Method method = null;
-
-                        try {
-                            method = DataProcessingOutputsInstance.getClass().getMethod("getNewState");
-                        } catch (NoSuchMethodException e) {
-                            XposedBridge.log("NoSuchMethodException: Exception cought in getNewState" + e);
+                        if(DataProcessingOutputsInstance != null) {
+                            try {
+                                method = DataProcessingOutputsInstance.getClass().getMethod("getNewState");
+                            } catch (NoSuchMethodException e) {
+                                XposedBridge.log("NoSuchMethodException: Exception cought in getNewState" + e);
+                            }
+                            try {
+                                newState = (byte[]) method.invoke(DataProcessingOutputsInstance);
+                            } catch (IllegalAccessException e) {
+                                XposedBridge.log("IllegalAccessException: Exception cought in getNewState" + e);
+                            } catch (InvocationTargetException e) {
+                                XposedBridge.log("InvocationTargetException: Exception cought in getNewState" + e);
+                            }
+                        } else {
+                            XposedBridge.log("We are after DataProcessingNative.processScan return value is null!!!");
                         }
-                        try {
-                            newState = (byte [])method.invoke(DataProcessingOutputsInstance);
-                        } catch (IllegalAccessException e) {
-                            XposedBridge.log("IllegalAccessException: Exception cought in getNewState" + e);
-                        } catch (InvocationTargetException e) {
-                            XposedBridge.log("InvocationTargetException: Exception cought in getNewState" + e);
-                        }
-
                         XposedBridge.log("We are after DataProcessingNative.processScan newStatis = " + Utils.byteArrayToHex(newState));
                         Utils.writeToFile("new_state" , newState);
                     }
@@ -454,7 +518,7 @@ public class NfcModifier implements IXposedHookLoadPackage {
                 Context context = (Context) AndroidAppHelper.currentApplication();
                 XposedBridge.log("context = " + context);
 
-                IntentFilter filter = new IntentFilter("com.example.Broadcast");
+                IntentFilter filter = new IntentFilter(Constants.XDRIP_PLUS_LIBRE_DATA);
                 MyReceiver receiver = new MyReceiver(lpparam.classLoader);
                 context.registerReceiver(receiver, filter);
 
