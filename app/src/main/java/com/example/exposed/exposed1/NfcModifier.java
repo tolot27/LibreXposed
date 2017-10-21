@@ -204,6 +204,10 @@ class MyReceiver extends BroadcastReceiver {
         XposedBridge.log("packet_file = " + packet_file);
         XposedBridge.log("old_state_file = " + old_state_file);
         byte[] packet;
+        byte[] oldState = {(byte)0xff, (byte)0xff, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00,
+                (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00,
+                (byte)0xff, (byte)0xff, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00,
+                (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00};;
         if(packet_file != null) {
             packet = Utils.readBinaryFile(packet_file);
         } else {
@@ -213,13 +217,15 @@ class MyReceiver extends BroadcastReceiver {
 
         XposedBridge.log("byte packet = " + Utils.byteArrayToHex(packet));
 
-        byte[] oldState = Utils.readBinaryFile(old_state_file);
+        if(old_state_file != null) {
+            oldState = Utils.readBinaryFile(old_state_file);
+        }
         XposedBridge.log("byte oldState = " + Utils.byteArrayToHex(oldState));
 
         if(packet == null || oldState == null) {
+            XposedBridge.log("packet or oldState are null - returning without sending a data file " + packet + oldState);
             return;
         }
-        //oldState = null;
 
         // Create DataProcessingNative
         Class<?> DataProcessingNativeDef = XposedHelpers.findClass("com.abbottdiabetescare.flashglucose.sensorabstractionservice.dataprocessing.DataProcessingNative", classLoader_);
@@ -302,10 +308,19 @@ class MyReceiver extends BroadcastReceiver {
                 (byte)0xd5, (byte)0x11, (byte)0x00, (byte)0x00, (byte)0x38, (byte)0xee, (byte)0xe9, (byte)0xae,
                 (byte)0x6b, (byte)0x09, (byte)0x20, (byte)0x2b, (byte)0xfe, (byte)0x44, (byte)0xdc, (byte)0xbf};
         */
-
-        Object DataProcessingOutputsInstance =  XposedHelpers.callMethod(DataProcessingNativeInstance, "processScan", AlarmConfigurationInstance, NonActionableConfigurationInstance,
-                packet, sensorStartTimestamp, sensorScanTimestamp, currentUtcOffset, oldState);
-        XposedBridge.log("return from  processScan is " + DataProcessingOutputsInstance + " " + Utils.objectToString(DataProcessingOutputsInstance));
+        Object DataProcessingOutputsInstance = null;
+        try {
+            DataProcessingOutputsInstance = XposedHelpers.callMethod(DataProcessingNativeInstance, "processScan", AlarmConfigurationInstance, NonActionableConfigurationInstance,
+                    packet, sensorStartTimestamp, sensorScanTimestamp, currentUtcOffset, oldState);
+            XposedBridge.log("return from  processScan is " + DataProcessingOutputsInstance + " " + Utils.objectToString(DataProcessingOutputsInstance));
+        }  catch(XposedHelpers.InvocationTargetError e) {
+            XposedBridge.log("Native processScan returned exception: - returning without sending back a value" + e);
+            return;
+        }
+        catch (Exception e) {
+            XposedBridge.log("Native processScan returned exception: - returning without sending back a value" + e);
+            return;
+        }
 
         java.lang.reflect.Method method = null;
         Object AlgorithmResultsInstance = null;
@@ -315,7 +330,8 @@ class MyReceiver extends BroadcastReceiver {
         try {
             method = DataProcessingOutputsInstance.getClass().getMethod("getAlgorithmResults");
         } catch (NoSuchMethodException e) {
-            XposedBridge.log("NoSuchMethodException: Exception cought in getAlgorithmResults" + e);
+            XposedBridge.log("NoSuchMethodException: Exception cought in getAlgorithmResults - returning without sending back a value" + e);
+            return;
         }
         try {
             AlgorithmResultsInstance = method.invoke(DataProcessingOutputsInstance);
